@@ -7,4 +7,4 @@ edition = "2024"
 anyhow = "1.0.102"
 eframe = "0.34.1"
 egui_extras = { version = "0.34.1", features = ["svg"] }
-
+mexpr = { path = "./mexpr" }

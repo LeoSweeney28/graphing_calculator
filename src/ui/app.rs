@@ -1,4 +1,6 @@
 use eframe::egui::{self, Key};
+use mexpr::{Store, TypedFunc, compile_function};
+use std::cell::RefCell;
 
 use crate::{
     math::grapher::marching_squares,
@@ -8,16 +10,72 @@ use crate::{
     },
 };
 
+pub struct Equation {
+    raw: String,
+    store: RefCell<Store<()>>,
+    func: TypedFunc<(f64, f64), f64>,
+    segments: Vec<((f64, f64), (f64, f64))>,
+    dirty: bool,
+}
+
+fn preprocess_equation(input: &str) -> String {
+    if let Some((lhs, rhs)) = input.split_once("=") {
+        // lhs will never have another equals but rhs could
+        if rhs.contains("=") {
+            // TODO: Don't panic here
+            panic!("Equation cannot have two equal signs");
+        }
+        format!("({lhs}) - ({rhs})")
+    } else {
+        input.to_string()
+    }
+}
+
+impl Equation {
+    pub fn new(input: &str) -> anyhow::Result<Self> {
+        let processed_input = preprocess_equation(input);
+        let (store, func) = compile_function(&processed_input)?;
+        Ok(Equation {
+            raw: input.to_string(),
+            store: RefCell::new(store),
+            func,
+            segments: vec![],
+            dirty: true,
+        })
+    }
+
+    pub fn calc_xy(&self, x: f64, y: f64) -> f64 {
+        let mut store = self.store.borrow_mut();
+        self.func.call(&mut *store, (x, y)).unwrap()
+    }
+
+    pub fn recalculate_if_needed(&mut self, viewport: Viewport) {
+        if self.dirty {
+            self.segments.clear();
+            let new_segments = marching_squares(|x, y| self.calc_xy(x, y), viewport, 300);
+            self.segments.extend(new_segments);
+            self.dirty = false;
+        }
+    }
+
+    pub fn mark_dirty(&mut self) {
+        self.dirty = true;
+    }
+}
+
 pub struct GraphingCalculatorApp {
     viewport: Viewport,
     last_viewport: Viewport,
+    equations: Vec<Equation>,
 }
 
 impl Default for GraphingCalculatorApp {
     fn default() -> Self {
+        let equation = Equation::new("x^2+y^2=5").unwrap();
         Self {
             viewport: Viewport::DEFAULT_VIEWPORT,
             last_viewport: Viewport::DEFAULT_VIEWPORT,
+            equations: vec![equation],
         }
     }
 }
@@ -63,18 +121,18 @@ impl eframe::App for GraphingCalculatorApp {
             // Draw x and y axis lines
             draw_axis_lines(&painter, self.viewport);
 
-            // draw equation
-
-            let segments =
-                marching_squares(|x, y| x.powf(2.0) + y.powf(2.0) - 16.0, self.viewport, 300);
-            for ((x0, y0), (x1, y1)) in segments {
-                painter.line_segment(
-                    [
-                        self.viewport.point_to_screen(graph_rect, x0, y0),
-                        self.viewport.point_to_screen(graph_rect, x1, y1),
-                    ],
-                    egui::Stroke::new(1.0, egui::Color32::from_rgb(255, 0, 0)),
-                );
+            // draw equations
+            for equation in &mut self.equations {
+                equation.recalculate_if_needed(self.viewport);
+                for &((x0, y0), (x1, y1)) in &equation.segments {
+                    painter.line_segment(
+                        [
+                            self.viewport.point_to_screen(graph_rect, x0, y0),
+                            self.viewport.point_to_screen(graph_rect, x1, y1),
+                        ],
+                        egui::Stroke::new(1.0, egui::Color32::from_rgb(255, 0, 0)),
+                    );
+                }
             }
         });
     }
