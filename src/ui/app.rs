@@ -110,6 +110,12 @@ impl eframe::App for GraphingCalculatorApp {
             // ensure y axis stays a square
             self.viewport.recalculate_y_axis(graph_rect);
 
+            if self.viewport != self.last_viewport {
+                for equation in &mut self.equations {
+                    equation.mark_dirty();
+                }
+            }
+
             let painter = ui.painter_at(graph_rect);
 
             // Draw background
@@ -134,6 +140,8 @@ impl eframe::App for GraphingCalculatorApp {
                     );
                 }
             }
+
+            self.last_viewport = self.viewport;
         });
     }
 }
