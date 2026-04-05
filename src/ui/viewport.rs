@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 
 use anyhow::anyhow;
-use eframe::egui::Rect;
+use eframe::egui::{self, Rect};
 
 #[derive(Clone, Copy, PartialEq)]
 pub struct Viewport {
@@ -23,9 +23,9 @@ impl Debug for Viewport {
 
 impl Viewport {
     pub const DEFAULT_VIEWPORT: Viewport = Viewport {
-        x_min: -5.0,
+        x_min: -10.0,
         x_max: 10.0,
-        y_min: -5.0,
+        y_min: -10.0,
         y_max: 10.0,
         has_custom_aspect_ratio: false,
     };
@@ -52,7 +52,7 @@ impl Viewport {
     pub fn width(&self) -> f64 {
         self.x_max - self.x_min
     }
-    
+
     pub fn height(&self) -> f64 {
         self.y_max - self.y_min
     }
@@ -77,5 +77,16 @@ impl Viewport {
             self.y_min = (-width * 0.5) / aspect_ratio;
             self.y_max = (width * 0.5) / aspect_ratio;
         }
+    }
+
+    pub fn x_to_screen(&self, rect: Rect, x: f64) -> f32 {
+        rect.min.x + (((x - self.x_min) * rect.width() as f64) / self.width()) as f32
+    }
+    pub fn y_to_screen(&self, rect: Rect, y: f64) -> f32 {
+        rect.max.y - (((y - self.y_min) * rect.height() as f64) / self.height()) as f32
+    }
+
+    pub fn point_to_screen(&self, rect: Rect, x: f64, y: f64) -> egui::Pos2 {
+        egui::pos2(self.x_to_screen(rect, x), self.y_to_screen(rect, y))
     }
 }

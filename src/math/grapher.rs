@@ -100,9 +100,11 @@ pub fn marching_squares(
                     let v_center = (v00 + v10 + v11 + v01) / 4.0;
 
                     if v_center >= 0.0 {
-                        segments.push((p_bottom, p_top)); // bottom - top
+                        segments.push((p_left, p_top)); // around top-left corner
+                        segments.push((p_bottom, p_right)); // around bottom-right corner
                     } else {
-                        segments.push((p_left, p_right)); // left - right
+                        segments.push((p_left, p_bottom)); // around bottom-left corner
+                        segments.push((p_top, p_right)); // around top-right corner
                     }
                 }
                 _ => continue,

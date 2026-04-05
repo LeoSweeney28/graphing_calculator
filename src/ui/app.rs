@@ -1,8 +1,11 @@
-use eframe::egui;
+use eframe::egui::{self, Key};
 
 use crate::{
     math::grapher::marching_squares,
-    ui::{grid::draw_axis_lines, viewport::Viewport},
+    ui::{
+        grid::{draw_axis_lines, draw_major_lines},
+        viewport::Viewport,
+    },
 };
 
 pub struct GraphingCalculatorApp {
@@ -22,6 +25,29 @@ impl Default for GraphingCalculatorApp {
 impl eframe::App for GraphingCalculatorApp {
     fn ui(&mut self, ui: &mut eframe::egui::Ui, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show_inside(ui, |ui| {
+            let (minus_pressed, plus_pressed) =
+                ui.input(|i| (i.key_pressed(Key::Minus), i.key_pressed(Key::Equals)));
+
+            // zoom out
+            if minus_pressed {
+                let half_width = self.viewport.width() / 2.0;
+                let half_height = self.viewport.height() / 2.0;
+                self.viewport.x_min -= half_width;
+                self.viewport.x_max += half_width;
+                self.viewport.y_min -= half_height;
+                self.viewport.y_max += half_height;
+            }
+
+            // zoom in
+            if plus_pressed {
+                let quarter_width = self.viewport.width() / 4.0;
+                let quarter_height = self.viewport.height() / 4.0;
+                self.viewport.x_min += quarter_width;
+                self.viewport.x_max -= quarter_width;
+                self.viewport.y_min += quarter_height;
+                self.viewport.y_max -= quarter_height;
+            }
+
             let graph_rect = ui.available_rect_before_wrap();
             // ensure y axis stays a square
             self.viewport.recalculate_y_axis(graph_rect);
@@ -31,24 +57,22 @@ impl eframe::App for GraphingCalculatorApp {
             // Draw background
             painter.rect_filled(graph_rect, 0.0, egui::Color32::from_rgb(20, 20, 20));
 
+            // Draw major axis lines
+            draw_major_lines(&painter, self.viewport);
+
             // Draw x and y axis lines
             draw_axis_lines(&painter, self.viewport);
 
             // draw equation
 
-            let segments = marching_squares(|x, y| x.powf(2.0) - y, self.viewport, 300);
-            let to_screen = |x, y| -> egui::Pos2 {
-                let sx = graph_rect.min.x
-                    + (((x - self.viewport.x_min) * graph_rect.width() as f64)
-                        / self.viewport.width()) as f32;
-                let sy = graph_rect.max.y
-                    - (((y - self.viewport.y_min) * graph_rect.height() as f64)
-                        / self.viewport.height()) as f32;
-                egui::pos2(sx, sy)
-            };
+            let segments =
+                marching_squares(|x, y| x.powf(2.0) + y.powf(2.0) - 16.0, self.viewport, 300);
             for ((x0, y0), (x1, y1)) in segments {
                 painter.line_segment(
-                    [to_screen(x0, y0), to_screen(x1, y1)],
+                    [
+                        self.viewport.point_to_screen(graph_rect, x0, y0),
+                        self.viewport.point_to_screen(graph_rect, x1, y1),
+                    ],
                     egui::Stroke::new(1.0, egui::Color32::from_rgb(255, 0, 0)),
                 );
             }
