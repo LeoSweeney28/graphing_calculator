@@ -98,7 +98,10 @@ impl Equation {
 
                 let data = self.memory.data(&*store);
                 let out_end = out_ptr + output_bytes;
-                assert!(out_end <= data.len(), "batch output out of wasm memory bounds");
+                assert!(
+                    out_end <= data.len(),
+                    "batch output out of wasm memory bounds"
+                );
 
                 let mut out = Vec::with_capacity(point_count);
                 for idx in 0..point_count {

@@ -1,6 +1,6 @@
 mod app;
-mod viewport;
 mod grid;
+mod viewport;
 
 pub use app::GraphingCalculatorApp;
 pub use viewport::Viewport;
