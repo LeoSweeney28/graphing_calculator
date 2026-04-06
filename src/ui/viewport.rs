@@ -74,8 +74,10 @@ impl Viewport {
         if !self.has_custom_aspect_ratio {
             let aspect_ratio = rect.aspect_ratio() as f64;
             let width = self.x_max - self.x_min;
-            self.y_min = (-width * 0.5) / aspect_ratio;
-            self.y_max = (width * 0.5) / aspect_ratio;
+            let y_center = (self.y_min + self.y_max) * 0.5;
+            let half_height = (width * 0.5) / aspect_ratio;
+            self.y_min = y_center - half_height;
+            self.y_max = y_center + half_height;
         }
     }
 

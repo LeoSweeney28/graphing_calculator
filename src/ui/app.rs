@@ -167,6 +167,29 @@ impl eframe::App for GraphingCalculatorApp {
             }
 
             let graph_rect = ui.available_rect_before_wrap();
+
+            // scroll zooming
+            let scroll_delta = ui.input(|i| i.smooth_scroll_delta());
+            if let Some(mouse_pos) = ui.pointer_latest_pos().filter(|p| graph_rect.contains(*p)) {
+                const SCROLL_SENSITIVITY: f64 = 0.005;
+
+                let mouse_x_norm = ((mouse_pos.x - graph_rect.left()) / graph_rect.width()) as f64;
+                let mouse_y_norm = ((mouse_pos.y - graph_rect.top()) / graph_rect.height()) as f64;
+
+                let mouse_world_x = self.viewport.x_min + mouse_x_norm * self.viewport.width();
+                let mouse_world_y = self.viewport.y_max - mouse_y_norm * self.viewport.height();
+
+                let zoom_factor = (scroll_delta.y as f64 * SCROLL_SENSITIVITY).exp();
+                self.viewport.x_min =
+                    mouse_world_x + (self.viewport.x_min - mouse_world_x) * zoom_factor;
+                self.viewport.x_max =
+                    mouse_world_x + (self.viewport.x_max - mouse_world_x) * zoom_factor;
+                self.viewport.y_min =
+                    mouse_world_y + (self.viewport.y_min - mouse_world_y) * zoom_factor;
+                self.viewport.y_max =
+                    mouse_world_y + (self.viewport.y_max - mouse_world_y) * zoom_factor;
+            }
+
             // ensure y axis stays a square
             self.viewport.recalculate_y_axis(graph_rect);
 
