@@ -1,4 +1,4 @@
-use eframe::egui::{self, Key};
+use eframe::egui::{self, Key, Pos2};
 use mexpr::{Memory, Store, TypedFunc, compile_function};
 use std::cell::RefCell;
 
@@ -127,6 +127,7 @@ pub struct GraphingCalculatorApp {
     viewport: Viewport,
     last_viewport: Viewport,
     equations: Vec<Equation>,
+    left_mouse_hold_pos: Option<Pos2>, // where the mouse was when the button started being held
 }
 
 impl Default for GraphingCalculatorApp {
@@ -136,6 +137,7 @@ impl Default for GraphingCalculatorApp {
             viewport: Viewport::DEFAULT_VIEWPORT,
             last_viewport: Viewport::DEFAULT_VIEWPORT,
             equations: vec![equation],
+            left_mouse_hold_pos: None,
         }
     }
 }
@@ -143,8 +145,13 @@ impl Default for GraphingCalculatorApp {
 impl eframe::App for GraphingCalculatorApp {
     fn ui(&mut self, ui: &mut eframe::egui::Ui, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show_inside(ui, |ui| {
-            let (minus_pressed, plus_pressed) =
-                ui.input(|i| (i.key_pressed(Key::Minus), i.key_pressed(Key::Equals)));
+            let (minus_pressed, plus_pressed, r_pressed) = ui.input(|i| {
+                (
+                    i.key_pressed(Key::Minus),
+                    i.key_pressed(Key::Equals),
+                    i.key_pressed(Key::R),
+                )
+            });
 
             // zoom out
             if minus_pressed {
@@ -164,6 +171,10 @@ impl eframe::App for GraphingCalculatorApp {
                 self.viewport.x_max -= quarter_width;
                 self.viewport.y_min += quarter_height;
                 self.viewport.y_max -= quarter_height;
+            }
+
+            if r_pressed {
+                self.viewport = Viewport::DEFAULT_VIEWPORT;
             }
 
             let graph_rect = ui.available_rect_before_wrap();
@@ -188,6 +199,30 @@ impl eframe::App for GraphingCalculatorApp {
                     mouse_world_y + (self.viewport.y_min - mouse_world_y) * zoom_factor;
                 self.viewport.y_max =
                     mouse_world_y + (self.viewport.y_max - mouse_world_y) * zoom_factor;
+            }
+
+            // handle graph dragging
+            let (left_button_pressed, mouse_delta) =
+                ui.input(|i| (i.pointer.primary_down(), i.pointer.delta()));
+            if left_button_pressed {
+                if self.left_mouse_hold_pos.is_none() {
+                    self.left_mouse_hold_pos = ui.pointer_latest_pos();
+                }
+            } else {
+                self.left_mouse_hold_pos = None;
+            }
+
+            if let Some(pos) = self.left_mouse_hold_pos
+                && graph_rect.contains(pos)
+            {
+                let dx =
+                    -(mouse_delta.x as f64 / graph_rect.width() as f64) * self.viewport.width();
+                let dy =
+                    (mouse_delta.y as f64 / graph_rect.height() as f64) * self.viewport.height();
+                self.viewport.x_min += dx;
+                self.viewport.x_max += dx;
+                self.viewport.y_min += dy;
+                self.viewport.y_max += dy;
             }
 
             // ensure y axis stays a square
