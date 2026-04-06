@@ -1,28 +1,22 @@
 use crate::ui::Viewport;
 
-/// https://en.wikipedia.org/wiki/Marching_squares#/media/File:Marching_squares_algorithm_schematic.svg
-pub fn marching_squares(
-    f: impl Fn(f64, f64) -> f64,
+pub fn marching_squares_from_values(
     viewport: Viewport,
     resolution: usize,
+    values: &[f64],
 ) -> Vec<((f64, f64), (f64, f64))> {
+    let side = resolution + 1;
+    let expected_len = side * side;
+    if values.len() != expected_len {
+        return vec![];
+    }
+
     let dx = viewport.width() / resolution as f64;
     let dy = viewport.height() / resolution as f64;
 
-    let mut values: Vec<Vec<f64>> = Vec::with_capacity(resolution + 1);
-
-    // precompute each value within the screen position
-    for i in 0..resolution + 1 {
-        let mut l = Vec::with_capacity(resolution + 1);
-        for j in 0..resolution + 1 {
-            let x = viewport.x_min + i as f64 * dx;
-            let y = viewport.y_min + j as f64 * dy;
-            l.push(f(x, y));
-        }
-        values.push(l);
-    }
-
     let mut segments: Vec<((f64, f64), (f64, f64))> = vec![];
+
+    let value_at = |i: usize, j: usize| -> f64 { values[i * side + j] };
 
     let interpolate = |x0: f64, y0: f64, v0: f64, x1: f64, y1: f64, v1: f64| -> (f64, f64) {
         // linear interpolation
@@ -32,10 +26,10 @@ pub fn marching_squares(
 
     for i in 0..resolution {
         for j in 0..resolution {
-            let v00 = values[i][j]; // bottom left
-            let v10 = values[i + 1][j]; // bottom right
-            let v11 = values[i + 1][j + 1]; // top left
-            let v01 = values[i][j + 1]; // top right
+            let v00 = value_at(i, j); // bottom left
+            let v10 = value_at(i + 1, j); // bottom right
+            let v11 = value_at(i + 1, j + 1); // top left
+            let v01 = value_at(i, j + 1); // top right
 
             let mut case_index = 0;
             if v00 >= 0.0 {
@@ -113,4 +107,28 @@ pub fn marching_squares(
     }
 
     segments
+}
+
+/// https://en.wikipedia.org/wiki/Marching_squares#/media/File:Marching_squares_algorithm_schematic.svg
+pub fn marching_squares(
+    f: impl Fn(f64, f64) -> f64,
+    viewport: Viewport,
+    resolution: usize,
+) -> Vec<((f64, f64), (f64, f64))> {
+    let side = resolution + 1;
+    let dx = viewport.width() / resolution as f64;
+    let dy = viewport.height() / resolution as f64;
+
+    let mut values: Vec<f64> = Vec::with_capacity(side * side);
+
+    // precompute each value within the screen position
+    for i in 0..side {
+        for j in 0..side {
+            let x = viewport.x_min + i as f64 * dx;
+            let y = viewport.y_min + j as f64 * dy;
+            values.push(f(x, y));
+        }
+    }
+
+    marching_squares_from_values(viewport, resolution, &values)
 }

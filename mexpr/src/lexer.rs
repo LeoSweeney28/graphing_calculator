@@ -22,10 +22,6 @@ impl Token {
         }
     }
 
-    pub fn is_op(&self) -> bool {
-        matches!(self, Self::Plus | Self::Minus | Self::Slash | Self::Star)
-    }
-
     pub fn is_right_associative(&self) -> bool {
         matches!(self, Self::Caret)
     }

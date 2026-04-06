@@ -1,19 +1,24 @@
 use eframe::egui::{self, Key};
-use mexpr::{Store, TypedFunc, compile_function};
+use mexpr::{Memory, Store, TypedFunc, compile_function};
 use std::cell::RefCell;
 
 use crate::{
-    math::grapher::marching_squares,
+    math::grapher::marching_squares_from_values,
     ui::{
         grid::{draw_axis_lines, draw_major_lines},
         viewport::Viewport,
     },
 };
 
+const MARCHING_RESOLUTION: usize = 300;
+const INPUT_STRIDE_BYTES: usize = 16;
+const OUTPUT_STRIDE_BYTES: usize = 8;
+const WASM_PAGE_SIZE: usize = 65_536;
+
 pub struct Equation {
-    raw: String,
     store: RefCell<Store<()>>,
-    func: TypedFunc<(f64, f64), f64>,
+    memory: Memory,
+    batch_func: TypedFunc<(i32, i32), i32>,
     segments: Vec<((f64, f64), (f64, f64))>,
     dirty: bool,
 }
@@ -34,26 +39,78 @@ fn preprocess_equation(input: &str) -> String {
 impl Equation {
     pub fn new(input: &str) -> anyhow::Result<Self> {
         let processed_input = preprocess_equation(input);
-        let (store, func) = compile_function(&processed_input)?;
+        let (store, _func, batch_func, memory) = compile_function(&processed_input)?;
         Ok(Equation {
-            raw: input.to_string(),
             store: RefCell::new(store),
-            func,
+            memory,
+            batch_func,
             segments: vec![],
             dirty: true,
         })
     }
 
-    pub fn calc_xy(&self, x: f64, y: f64) -> f64 {
-        let mut store = self.store.borrow_mut();
-        self.func.call(&mut *store, (x, y)).unwrap()
-    }
-
     pub fn recalculate_if_needed(&mut self, viewport: Viewport) {
         if self.dirty {
-            self.segments.clear();
-            let new_segments = marching_squares(|x, y| self.calc_xy(x, y), viewport, 300);
-            self.segments.extend(new_segments);
+            let resolution = MARCHING_RESOLUTION;
+            let side = resolution + 1;
+            let point_count = side * side;
+            let point_count_i32 = i32::try_from(point_count).expect("resolution too large");
+
+            let input_bytes = point_count * INPUT_STRIDE_BYTES;
+            let output_bytes = point_count * OUTPUT_STRIDE_BYTES;
+            let needed_bytes = input_bytes + output_bytes;
+
+            let dx = viewport.width() / resolution as f64;
+            let dy = viewport.height() / resolution as f64;
+
+            let values = {
+                let mut store = self.store.borrow_mut();
+
+                let current_size = self.memory.data_size(&*store);
+                if current_size < needed_bytes {
+                    let additional = needed_bytes - current_size;
+                    let pages = additional.div_ceil(WASM_PAGE_SIZE);
+                    self.memory
+                        .grow(&mut *store, pages as u64)
+                        .expect("failed to grow wasm memory");
+                }
+
+                {
+                    let data = self.memory.data_mut(&mut *store);
+                    for i in 0..side {
+                        let x = viewport.x_min + i as f64 * dx;
+                        for j in 0..side {
+                            let y = viewport.y_min + j as f64 * dy;
+                            let idx = i * side + j;
+                            let base = idx * INPUT_STRIDE_BYTES;
+
+                            data[base..base + 8].copy_from_slice(&x.to_le_bytes());
+                            data[base + 8..base + INPUT_STRIDE_BYTES]
+                                .copy_from_slice(&y.to_le_bytes());
+                        }
+                    }
+                }
+
+                let out_ptr = self
+                    .batch_func
+                    .call(&mut *store, (0, point_count_i32))
+                    .expect("batch wasm call failed") as usize;
+
+                let data = self.memory.data(&*store);
+                let out_end = out_ptr + output_bytes;
+                assert!(out_end <= data.len(), "batch output out of wasm memory bounds");
+
+                let mut out = Vec::with_capacity(point_count);
+                for idx in 0..point_count {
+                    let base = out_ptr + idx * OUTPUT_STRIDE_BYTES;
+                    let mut buf = [0_u8; 8];
+                    buf.copy_from_slice(&data[base..base + OUTPUT_STRIDE_BYTES]);
+                    out.push(f64::from_le_bytes(buf));
+                }
+                out
+            };
+
+            self.segments = marching_squares_from_values(viewport, resolution, &values);
             self.dirty = false;
         }
     }

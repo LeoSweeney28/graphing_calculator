@@ -10,4 +10,5 @@ path = "src/lib.rs"
 [dependencies]
 anyhow = "1.0.102"
 wasm-encoder = "0.246.2"
+wasmprinter = "0.246.2"
 wasmtime = "43.0.0"
