@@ -5,7 +5,7 @@ use std::cell::RefCell;
 use crate::{
     math::grapher::marching_squares_from_values,
     ui::{
-        grid::{draw_axis_lines, draw_major_lines},
+        grid::{draw_axis_lines, draw_grid_lines},
         viewport::Viewport,
     },
 };
@@ -182,7 +182,7 @@ impl eframe::App for GraphingCalculatorApp {
             painter.rect_filled(graph_rect, 0.0, egui::Color32::from_rgb(20, 20, 20));
 
             // Draw major axis lines
-            draw_major_lines(&painter, self.viewport);
+            draw_grid_lines(&painter, self.viewport);
 
             // Draw x and y axis lines
             draw_axis_lines(&painter, self.viewport);

@@ -4,9 +4,14 @@ use crate::ui::viewport::Viewport;
 
 const MIN_PIXEL_SIZE: f64 = 80.0;
 
-fn nice_number(x: f64) -> f64 {
+// returns (fraction, exponent)
+fn normalize(x: f64) -> (f64, f64) {
     let exponent = x.log10().floor();
-    let fraction = x / 10f64.powf(exponent);
+    (x / 10f64.powf(exponent), exponent)
+}
+
+fn nice_number(x: f64) -> f64 {
+    let (fraction, exponent) = normalize(x);
 
     let nice_fraction = if fraction < 1.5 {
         1.0
@@ -38,7 +43,67 @@ fn format_number(x: f64) -> String {
     }
 }
 
-pub fn draw_major_lines(painter: &Painter, viewport: Viewport) {
+const AXIS_LINE_COLOR: egui::Color32 = egui::Color32::from_rgb(80, 80, 80);
+const MAJOR_GRID_LINE_COLOR: egui::Color32 = egui::Color32::from_rgb(60, 60, 60);
+const MINOR_GRID_LINE_COLOR: egui::Color32 = egui::Color32::from_rgb(40, 40, 40);
+const LABEL_COLOR: egui::Color32 = egui::Color32::from_rgb(255, 255, 255);
+
+fn draw_minor_lines(
+    painter: &Painter,
+    viewport: Viewport,
+    major_spacing_x: f64,
+    major_spacing_y: f64,
+) {
+    let rect = painter.clip_rect();
+
+    // if normalize(major_spacing) == 2.0, then we should have 4 minor lines, else 5
+
+    let minor_spacing_x = if (normalize(major_spacing_x).0 - 2.0).abs() < 1e-10 {
+        major_spacing_x / 4.0
+    } else {
+        major_spacing_x / 5.0
+    };
+    let minor_spacing_y = if (normalize(major_spacing_y).0 - 2.0).abs() < 1e-10 {
+        major_spacing_y / 4.0
+    } else {
+        major_spacing_y / 5.0
+    };
+
+    // round to nearest minor spacing
+    let start_x = (viewport.x_min / minor_spacing_x).floor() * minor_spacing_x;
+    let start_y = (viewport.y_min / minor_spacing_y).floor() * minor_spacing_y;
+    // Vertical lines (x-axis)
+    let mut x = start_x;
+
+    while x <= viewport.x_max {
+        let screen_x = viewport.x_to_screen(rect, x);
+        painter.line_segment(
+            [
+                egui::pos2(screen_x, rect.min.y),
+                egui::pos2(screen_x, rect.max.y),
+            ],
+            Stroke::new(1.0, MINOR_GRID_LINE_COLOR),
+        );
+        x += minor_spacing_x;
+    }
+
+    // Horizontal lines (y-axis)
+    let mut y = start_y;
+
+    while y <= viewport.y_max {
+        let screen_y = viewport.y_to_screen(rect, y);
+        painter.line_segment(
+            [
+                egui::pos2(rect.min.x, screen_y),
+                egui::pos2(rect.max.x, screen_y),
+            ],
+            Stroke::new(1.0, MINOR_GRID_LINE_COLOR),
+        );
+        y += minor_spacing_y;
+    }
+}
+
+pub fn draw_grid_lines(painter: &Painter, viewport: Viewport) {
     let rect = painter.clip_rect();
     let pixels_per_unit_x = rect.width() as f64 / viewport.width();
     let pixels_per_unit_y = rect.height() as f64 / viewport.height();
@@ -58,6 +123,8 @@ pub fn draw_major_lines(painter: &Painter, viewport: Viewport) {
     let y_axis_visible = viewport.x_min <= 0.0 && viewport.x_max >= 0.0;
     let y_axis_screen_x = viewport.x_to_screen(rect, 0.0);
 
+    draw_minor_lines(painter, viewport, major_spacing_x, major_spacing_y);
+
     // Vertical lines (x-axis)
     let mut x = start_x;
 
@@ -68,7 +135,7 @@ pub fn draw_major_lines(painter: &Painter, viewport: Viewport) {
                 egui::pos2(screen_x, rect.min.y),
                 egui::pos2(screen_x, rect.max.y),
             ],
-            Stroke::new(1.0, egui::Color32::from_rgb(60, 60, 60)),
+            Stroke::new(1.0, MAJOR_GRID_LINE_COLOR),
         );
         // sometimes x is very close to zero but not at it
         if x_axis_visible && x.abs() >= major_spacing_x / 100.0 {
@@ -77,7 +144,7 @@ pub fn draw_major_lines(painter: &Painter, viewport: Viewport) {
                 Align2::CENTER_TOP,
                 format_number(x),
                 FontId::default(),
-                egui::Color32::from_rgb(255, 255, 255),
+                LABEL_COLOR,
             );
         }
         x += major_spacing_x;
@@ -93,7 +160,7 @@ pub fn draw_major_lines(painter: &Painter, viewport: Viewport) {
                 egui::pos2(rect.min.x, screen_y),
                 egui::pos2(rect.max.x, screen_y),
             ],
-            Stroke::new(1.0, egui::Color32::from_rgb(60, 60, 60)),
+            Stroke::new(1.0, MAJOR_GRID_LINE_COLOR),
         );
         // sometimes y is very close to zero but not at it
         if y_axis_visible && y.abs() >= major_spacing_y / 100.0 {
@@ -102,7 +169,7 @@ pub fn draw_major_lines(painter: &Painter, viewport: Viewport) {
                 Align2::RIGHT_CENTER,
                 format_number(y),
                 FontId::default(),
-                egui::Color32::from_rgb(255, 255, 255),
+                LABEL_COLOR,
             );
         }
         y += major_spacing_y;
@@ -114,7 +181,7 @@ pub fn draw_major_lines(painter: &Painter, viewport: Viewport) {
             Align2::RIGHT_TOP,
             "0",
             FontId::default(),
-            egui::Color32::from_rgb(255, 255, 255),
+            LABEL_COLOR,
         );
     }
 }
@@ -131,7 +198,7 @@ pub fn draw_axis_lines(painter: &Painter, viewport: Viewport) {
                 pos2(graph_rect.min.x, screen_y),
                 pos2(graph_rect.max.x, screen_y),
             ],
-            Stroke::new(2.0, egui::Color32::from_rgb(80, 80, 80)),
+            Stroke::new(2.0, AXIS_LINE_COLOR),
         );
     }
 
@@ -144,7 +211,7 @@ pub fn draw_axis_lines(painter: &Painter, viewport: Viewport) {
                 pos2(screen_x, graph_rect.min.y),
                 pos2(screen_x, graph_rect.max.y),
             ],
-            Stroke::new(2.0, egui::Color32::from_rgb(80, 80, 80)),
+            Stroke::new(2.0, AXIS_LINE_COLOR),
         );
     }
 }
