@@ -23,22 +23,35 @@ pub struct Equation {
     dirty: bool,
 }
 
-fn preprocess_equation(input: &str) -> String {
+fn preprocess_equation(input: &str) -> anyhow::Result<String> {
     if let Some((lhs, rhs)) = input.split_once("=") {
         // lhs will never have another equals but rhs could
         if rhs.contains("=") {
-            // TODO: Don't panic here
-            panic!("Equation cannot have two equal signs");
+            return Err(anyhow::anyhow!("Equation cannot have multiple equal signs"));
         }
-        format!("({lhs}) - ({rhs})")
+        Ok(format!("({lhs}) - ({rhs})"))
     } else {
-        input.to_string()
+        Ok(input.to_string())
     }
 }
 
 impl Equation {
+    /// Ensure wasm memory is large enough for the given byte count
+    fn ensure_memory_capacity(&self, needed_bytes: usize) -> Result<(), String> {
+        let mut store = self.store.borrow_mut();
+        let current_size = self.memory.data_size(&*store);
+        if current_size < needed_bytes {
+            let additional = needed_bytes - current_size;
+            let pages = additional.div_ceil(WASM_PAGE_SIZE);
+            self.memory
+                .grow(&mut *store, pages as u64)
+                .map_err(|_| "Failed to grow wasm memory".to_string())?;
+        }
+        Ok(())
+    }
+
     pub fn new(input: &str) -> anyhow::Result<Self> {
-        let processed_input = preprocess_equation(input);
+        let processed_input = preprocess_equation(input)?;
         let (store, _func, batch_func, memory) = compile_function(&processed_input)?;
         Ok(Equation {
             store: RefCell::new(store),
@@ -66,13 +79,9 @@ impl Equation {
             let values = {
                 let mut store = self.store.borrow_mut();
 
-                let current_size = self.memory.data_size(&*store);
-                if current_size < needed_bytes {
-                    let additional = needed_bytes - current_size;
-                    let pages = additional.div_ceil(WASM_PAGE_SIZE);
-                    self.memory
-                        .grow(&mut *store, pages as u64)
-                        .expect("failed to grow wasm memory");
+                if let Err(e) = self.ensure_memory_capacity(needed_bytes) {
+                    eprintln!("Warning: {}", e);
+                    return;
                 }
 
                 {
@@ -97,11 +106,13 @@ impl Equation {
                     .expect("batch wasm call failed") as usize;
 
                 let data = self.memory.data(&*store);
+                let output_bytes = point_count * OUTPUT_STRIDE_BYTES;
                 let out_end = out_ptr + output_bytes;
-                assert!(
-                    out_end <= data.len(),
-                    "batch output out of wasm memory bounds"
-                );
+                
+                if out_end > data.len() {
+                    eprintln!("Warning: batch output out of wasm memory bounds");
+                    return;
+                }
 
                 let mut out = Vec::with_capacity(point_count);
                 for idx in 0..point_count {
@@ -132,7 +143,8 @@ pub struct GraphingCalculatorApp {
 
 impl Default for GraphingCalculatorApp {
     fn default() -> Self {
-        let equation = Equation::new("x^2+y^2=5").unwrap();
+        let equation = Equation::new("x^2+y^2=5")
+            .expect("Failed to parse default equation");
         Self {
             viewport: Viewport::DEFAULT_VIEWPORT,
             last_viewport: Viewport::DEFAULT_VIEWPORT,
@@ -153,24 +165,14 @@ impl eframe::App for GraphingCalculatorApp {
                 )
             });
 
-            // zoom out
+            // zoom out (factor 2.0)
             if minus_pressed {
-                let half_width = self.viewport.width() / 2.0;
-                let half_height = self.viewport.height() / 2.0;
-                self.viewport.x_min -= half_width;
-                self.viewport.x_max += half_width;
-                self.viewport.y_min -= half_height;
-                self.viewport.y_max += half_height;
+                self.viewport.zoom_out_centered(2.0);
             }
 
-            // zoom in
+            // zoom in (factor 0.5)
             if plus_pressed {
-                let quarter_width = self.viewport.width() / 4.0;
-                let quarter_height = self.viewport.height() / 4.0;
-                self.viewport.x_min += quarter_width;
-                self.viewport.x_max -= quarter_width;
-                self.viewport.y_min += quarter_height;
-                self.viewport.y_max -= quarter_height;
+                self.viewport.zoom_out_centered(0.5);
             }
 
             if r_pressed {
@@ -191,14 +193,7 @@ impl eframe::App for GraphingCalculatorApp {
                 let mouse_world_y = self.viewport.y_max - mouse_y_norm * self.viewport.height();
 
                 let zoom_factor = (scroll_delta.y as f64 * SCROLL_SENSITIVITY).exp();
-                self.viewport.x_min =
-                    mouse_world_x + (self.viewport.x_min - mouse_world_x) * zoom_factor;
-                self.viewport.x_max =
-                    mouse_world_x + (self.viewport.x_max - mouse_world_x) * zoom_factor;
-                self.viewport.y_min =
-                    mouse_world_y + (self.viewport.y_min - mouse_world_y) * zoom_factor;
-                self.viewport.y_max =
-                    mouse_world_y + (self.viewport.y_max - mouse_world_y) * zoom_factor;
+                self.viewport.zoom_around_point(mouse_world_x, mouse_world_y, zoom_factor);
             }
 
             // handle graph dragging
@@ -212,17 +207,14 @@ impl eframe::App for GraphingCalculatorApp {
                 self.left_mouse_hold_pos = None;
             }
 
-            if let Some(pos) = self.left_mouse_hold_pos
-                && graph_rect.contains(pos)
-            {
-                let dx =
-                    -(mouse_delta.x as f64 / graph_rect.width() as f64) * self.viewport.width();
-                let dy =
-                    (mouse_delta.y as f64 / graph_rect.height() as f64) * self.viewport.height();
-                self.viewport.x_min += dx;
-                self.viewport.x_max += dx;
-                self.viewport.y_min += dy;
-                self.viewport.y_max += dy;
+            if let Some(pos) = self.left_mouse_hold_pos {
+                if graph_rect.contains(pos) {
+                    let dx =
+                        -(mouse_delta.x as f64 / graph_rect.width() as f64) * self.viewport.width();
+                    let dy =
+                        (mouse_delta.y as f64 / graph_rect.height() as f64) * self.viewport.height();
+                    self.viewport.pan(dx, dy);
+                }
             }
 
             // ensure y axis stays a square

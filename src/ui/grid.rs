@@ -2,9 +2,14 @@ use eframe::egui::{self, Align2, FontId, Painter, Stroke, pos2};
 
 use crate::ui::viewport::Viewport;
 
+// Grid rendering constants
 const MIN_PIXEL_SIZE: f64 = 80.0;
+const AXIS_LINE_COLOR: egui::Color32 = egui::Color32::from_rgb(80, 80, 80);
+const MAJOR_GRID_LINE_COLOR: egui::Color32 = egui::Color32::from_rgb(60, 60, 60);
+const MINOR_GRID_LINE_COLOR: egui::Color32 = egui::Color32::from_rgb(40, 40, 40);
+const LABEL_COLOR: egui::Color32 = egui::Color32::from_rgb(255, 255, 255);
 
-// returns (fraction, exponent)
+/// Returns (fraction, exponent) for scientific notation decomposition
 fn normalize(x: f64) -> (f64, f64) {
     let exponent = x.log10().floor();
     (x / 10f64.powf(exponent), exponent)
@@ -26,27 +31,32 @@ fn nice_number(x: f64) -> f64 {
     nice_fraction * 10f64.powf(exponent)
 }
 
+/// Format a number for display, using scientific notation for very large/small values
 fn format_number(x: f64) -> String {
     if x == 0.0 {
         return "0".to_string();
     }
+    
+    const SCIENTIFIC_THRESHOLD_EXP: f64 = 6.0;
+    const SCIENTIFIC_THRESHOLD_MANTISSA: f64 = -5.0;
+    
     let exponent = x.abs().log10().floor();
-    let fraction = x / 10f64.powf(exponent);
-    let fractional_str = format!("{fraction:.1}").trim_end_matches(".0").to_string();
-    if exponent >= 6.0 || exponent <= -5.0 {
-        format!("{}e{exponent}", fractional_str)
+    
+    // Use scientific notation for very large or very small numbers
+    if exponent >= SCIENTIFIC_THRESHOLD_EXP || exponent <= SCIENTIFIC_THRESHOLD_MANTISSA {
+        let fraction = x / 10f64.powf(exponent);
+        let fractional_str = format!("{fraction:.1}")
+            .trim_end_matches(".0")
+            .to_string();
+        format!("{}e{}", fractional_str, exponent as i32)
     } else {
+        // Use regular decimal notation with trimmed trailing zeros
         format!("{:.5}", x)
-            .trim_end_matches("0")
-            .trim_end_matches(".")
+            .trim_end_matches('0')
+            .trim_end_matches('.')
             .to_string()
     }
 }
-
-const AXIS_LINE_COLOR: egui::Color32 = egui::Color32::from_rgb(80, 80, 80);
-const MAJOR_GRID_LINE_COLOR: egui::Color32 = egui::Color32::from_rgb(60, 60, 60);
-const MINOR_GRID_LINE_COLOR: egui::Color32 = egui::Color32::from_rgb(40, 40, 40);
-const LABEL_COLOR: egui::Color32 = egui::Color32::from_rgb(255, 255, 255);
 
 fn draw_minor_lines(
     painter: &Painter,

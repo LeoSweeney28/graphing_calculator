@@ -91,4 +91,32 @@ impl Viewport {
     pub fn point_to_screen(&self, rect: Rect, x: f64, y: f64) -> egui::Pos2 {
         egui::pos2(self.x_to_screen(rect, x), self.y_to_screen(rect, y))
     }
+
+    /// Zoom out by a factor (values > 1.0 zoom out, < 1.0 zoom in)
+    pub fn zoom_out_centered(&mut self, factor: f64) {
+        let half_width = self.width() / 2.0;
+        let half_height = self.height() / 2.0;
+        let margin_x = half_width * (factor - 1.0) / 2.0;
+        let margin_y = half_height * (factor - 1.0) / 2.0;
+        self.x_min -= margin_x;
+        self.x_max += margin_x;
+        self.y_min -= margin_y;
+        self.y_max += margin_y;
+    }
+
+    /// Zoom in/out around a specific world point
+    pub fn zoom_around_point(&mut self, world_x: f64, world_y: f64, zoom_factor: f64) {
+        self.x_min = world_x + (self.x_min - world_x) * zoom_factor;
+        self.x_max = world_x + (self.x_max - world_x) * zoom_factor;
+        self.y_min = world_y + (self.y_min - world_y) * zoom_factor;
+        self.y_max = world_y + (self.y_max - world_y) * zoom_factor;
+    }
+
+    /// Pan the viewport by the given world distance
+    pub fn pan(&mut self, dx: f64, dy: f64) {
+        self.x_min += dx;
+        self.x_max += dx;
+        self.y_min += dy;
+        self.y_max += dy;
+    }
 }

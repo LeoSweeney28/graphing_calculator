@@ -38,9 +38,10 @@ pub fn lex(input: &str) -> Result<Vec<Token>, anyhow::Error> {
             }
             '0'..='9' => {
                 let mut buf = String::new();
-                while let Some(&c) = chars.peek()
-                    && (c.is_ascii_digit() || c == '.')
-                {
+                while let Some(&c) = chars.peek() {
+                    if !(c.is_ascii_digit() || c == '.') {
+                        break;
+                    }
                     buf.push(c);
                     chars.next();
                 }
@@ -48,12 +49,14 @@ pub fn lex(input: &str) -> Result<Vec<Token>, anyhow::Error> {
                     .parse::<f64>()
                     .map_err(|_| anyhow::anyhow!("invalid number: {}", buf))?;
                 tokens.push(Token::Number(n));
+                tokens.push(Token::Number(n));
             }
             'a'..='z' | 'A'..='Z' => {
                 let mut buf = String::new();
-                while let Some(&c) = chars.peek()
-                    && c.is_ascii_alphanumeric()
-                {
+                while let Some(&c) = chars.peek() {
+                    if !c.is_ascii_alphanumeric() {
+                        break;
+                    }
                     buf.push(c);
                     chars.next();
                 }
@@ -103,18 +106,23 @@ pub fn to_postfix(tokens: Vec<Token>) -> Vec<Token> {
             Token::Number(_) | Token::Ident(_) => result.push(tok),
             Token::LParen => stack.push(tok),
             Token::RParen => {
-                while let Some(t) = stack.pop()
-                    && t != Token::LParen
-                {
+                while let Some(t) = stack.pop() {
+                    if t == Token::LParen {
+                        break;
+                    }
                     result.push(t);
                 }
             }
             _ => {
-                while let Some(t) = stack.last()
-                    && !matches!(t, Token::LParen)
-                    && (t.prec() > tok.prec()
+                while let Some(t) = stack.last() {
+                    if matches!(t, Token::LParen) {
+                        break;
+                    }
+                    if !(t.prec() > tok.prec()
                         || (t.prec() == tok.prec() && !tok.is_right_associative()))
-                {
+                    {
+                        break;
+                    }
                     result.push(stack.pop().unwrap());
                 }
                 stack.push(tok);
