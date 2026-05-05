@@ -49,7 +49,6 @@ pub fn lex(input: &str) -> Result<Vec<Token>, anyhow::Error> {
                     .parse::<f64>()
                     .map_err(|_| anyhow::anyhow!("invalid number: {}", buf))?;
                 tokens.push(Token::Number(n));
-                tokens.push(Token::Number(n));
             }
             'a'..='z' | 'A'..='Z' => {
                 let mut buf = String::new();
